@@ -28,26 +28,26 @@ enum CutieState
 	JUMPING,
 };
 
-
-//Width, height and speed for cutie
-const float CUTIE_WIDTH = 100.0f;
-const float CUTIE_HEIGHT = 100.0f;
+//Width, height, vertcial velocity and speed for cutie
+const float CUTIE_WIDTH = 12.0f;
+const float CUTIE_HEIGHT = 12.0f;
 const float CUTIE_SPEED = 3.0f;
+float cutieVerticalVelocity = 3.0f;
 
 //Jumping variables for cutie
 bool isJumping = false;
-float jumpVelocity = 0.0f;
+float jumpVelocity = 1.0f;
 const float jumpStrength = 15.0f; //Jump height
 const float gravity = 1.0f;  //Gravity strength
 
 //Width and height for floors
-const float FLOOR_WIDTH = 5.0f;
-const float FLOOR_HEIGHT = 5.0f;
+const float FLOOR_WIDTH = 50.0f;
+const float FLOOR_HEIGHT = 9.0f;
 
 //Number of floors to create
 const int NUM_FLOORS = 10;
 //Floor radius
-const float FLOOR_RADIUS = 20.0f;
+const float FLOOR_RADIUS = 12.0f;
 //Floor speed
 const float FLOOR_SPEED = 0.0f;
 
@@ -60,11 +60,16 @@ void FloorCreation();
 void FloorBehaviour();
 void UpdateCutie();
 void CutieControls();
+void ApplyGravity();
+bool CheckAABBCollision(const GameObject& obj1, float left1, float right1, float top1, float bottom1);
+void DrawAABB(const GameObject& obj, float width, float height);
+void GameOverDraw();
 
 //Flags to control game state and global variables
 GameState gameState = STATE_START;
 bool enterPressed = false;
 CutieState cutieState = IDLE; //starts on an idle state
+Point2D prevCutiePosition; // variable that stores the previous frame position of cutie
 
 //Entry
 void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
@@ -72,14 +77,18 @@ void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
 	Play::CreateManager( DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_SCALE );
 	Play::CentreAllSpriteOrigins(); //obj.pos = center of a sprite
 	Play::LoadBackground("Data\\Backgrounds\\newlife.jpg");
-	Play::StartAudioLoop("music");
+	//Play::StartAudioLoop("music");
 
 	//Cutie Object Creation
-	Play::CreateGameObject(TYPE_CUTIE, { 85, 75 }, 50, "cutie_idle_3");
+	Play::CreateGameObject(TYPE_CUTIE, { 85, 75 }, 8, "cutie_idle_3");
 	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
 	obj_cutie.animSpeed=0.1;
 
+	//Creating the game floors
 	FloorCreation();
+
+	//Start game initialization
+	gameState = STATE_START;
 }
 
 // Update (60 times a second!)
@@ -92,15 +101,15 @@ bool MainGameUpdate( float elapsedTime )
 		MainMenuDraw();
 		UpdateCutie();
 
-		return false; //holds the start screen until enter is pressed
-		
+		return false; //holds the start screen until enter is pressed	
 	}
 
 	//Gameplay begins over here
-	if (gameState == STATE_PLAY)
+    if (gameState == STATE_PLAY)
 	{
 		CutieControls();
 		UpdateCutie();
+		ApplyGravity();
 		UpdateDraw();
 		FloorBehaviour();
 	}
@@ -109,6 +118,7 @@ bool MainGameUpdate( float elapsedTime )
 	if (gameState == STATE_OVER)
 	{
 		// Add cool game ending stuff
+		GameOverDraw();
 	}
 
 	return Play::KeyDown( VK_ESCAPE );
@@ -120,6 +130,10 @@ int MainGameExit( void )
 	Play::DestroyManager();
 	return PLAY_OK;
 }
+
+
+
+//All my functions
 
 void StartGameLogic()
 {
@@ -168,13 +182,16 @@ void UpdateDraw()
 	std::vector<int> FloorIDs = Play::CollectGameObjectIDsByType(TYPE_FLOOR);
 	for (int i: FloorIDs)
 	{
+		GameObject& obj_floor = Play::GetGameObject(i);
 		Play::DrawObject(Play::GetGameObject(i));
-		Play::GetGameObject(i);
+		Play::DrawObject(obj_floor);
+		DrawAABB(obj_floor, FLOOR_WIDTH, FLOOR_HEIGHT); //Draws an AABB for floors
 	}
 
-	//Draw Cutie
+	//Draw Cutie and its AABB
 	GameObject& cutie = Play::GetGameObjectByType(TYPE_CUTIE);
 	Play::DrawObject(cutie);
+	DrawAABB(cutie, CUTIE_WIDTH, CUTIE_HEIGHT); //Draws an AABB around cutie
 
 	//Game controls text
 	Play::DrawFontText("64px", "Use arrow keys to control Cutie & space bar to jump", Point2D(DISPLAY_WIDTH / 2,570), Play::CENTRE);
@@ -190,7 +207,7 @@ void FloorCreation()
 		{
 			float xPos = static_cast<float>(rand() % DISPLAY_WIDTH);
 			float yPos = static_cast<float>(rand() % DISPLAY_HEIGHT);
-			Play::CreateGameObject(TYPE_FLOOR, { xPos, yPos }, FLOOR_RADIUS, "floor");
+			Play::CreateGameObject(TYPE_FLOOR, { xPos, yPos }, FLOOR_WIDTH + FLOOR_HEIGHT, "floor");
 		}
 	}
 }
@@ -199,13 +216,34 @@ void FloorBehaviour()
 {
 	//Floor behaviour going into update
 	std::vector<int> FloorIDs = Play::CollectGameObjectIDsByType(TYPE_FLOOR);
+	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+
 	for (int i : FloorIDs)
 	{
 		GameObject& obj_floor = Play::GetGameObject(i);
 		obj_floor.pos.y += FLOOR_SPEED;
 
-		//checking if Gems are out of the display area and reset their position
-		if (obj_floor.pos.y > DISPLAY_HEIGHT + FLOOR_RADIUS)
+		float floorLeft = obj_floor.pos.x - (FLOOR_WIDTH / 2);
+		float floorRight = obj_floor.pos.x + (FLOOR_WIDTH / 2);
+		float floorTop = obj_floor.pos.y - (FLOOR_HEIGHT / 2);
+		float floorBottom = obj_floor.pos.y + (FLOOR_HEIGHT / 2);
+
+		//Checking if cutie collides with a floor
+		if (CheckAABBCollision(obj_cutie, floorLeft, floorRight, floorTop, floorBottom))
+		{
+			//Collision with cutie logic here
+			if (prevCutiePosition.y <= floorTop)
+			{
+				// Cutie was above the AABB ihn previous frame, so it landed on top
+				jumpVelocity = 1.0f;
+				obj_cutie.pos.y = obj_floor.pos.y - (CUTIE_HEIGHT / 2);
+				isJumping = false;
+				cutieState = CutieState::IDLE;
+			}	
+		}
+
+		//checking if floors are out of the display area and reset their position
+		if (obj_floor.pos.y > DISPLAY_HEIGHT + (FLOOR_HEIGHT / 2))
 		{
 			obj_floor.pos.y = -FLOOR_RADIUS;
 			obj_floor.pos.x = static_cast<float>(rand() % DISPLAY_WIDTH);
@@ -216,6 +254,9 @@ void FloorBehaviour()
 void UpdateCutie()
 {
 	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+
+	//Storage of previous cutie frame position
+	prevCutiePosition = obj_cutie.pos;
 
 	switch (cutieState)
 	{
@@ -248,24 +289,6 @@ void UpdateCutie()
 	Play::UpdateGameObject(obj_cutie) ;
 }
 
-bool IsColliding(const GameObject& obj1, const GameObject& obj2)
-{
-	// boundaries of obj1
-	float left1 = obj1.pos.x;
-	float right1 = obj1.pos.x + obj1.radius * 2;
-	float top1 = obj1.pos.y;
-	float bottom1 = obj1.pos.y + obj1.radius * 2;
-
-	// boundaries of obj2
-	float left2 = obj2.pos.x;
-	float right2 = obj2.pos.x + obj2.radius * 2;
-	float top2 = obj2.pos.y;
-	float bottom2 = obj2.pos.y + obj2.radius * 2;
-
-	// Checking for collision
-	return (left1 < right2 && right1 > left2 && top1 < bottom2 && bottom1 > top2);
-}
-
 void CutieControls()
 {
 	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
@@ -288,53 +311,103 @@ void CutieControls()
 	}
 
 	//Handling the jumping mechanics
-	if (Play::KeyDown(VK_SPACE && !isJumping))
+	if (Play::KeyDown(VK_SPACE) && !isJumping)
 	{
 		// Upward velocity to initiate jump
-		jumpVelocity = -jumpStrength;
+		cutieVerticalVelocity = -jumpStrength;
 		isJumping = true;
 		cutieState = CutieState::JUMPING;
 	}
 
+	// If cutie is not jumping and not on a floor
+	if (!isJumping)
+	{
+		cutieVerticalVelocity += gravity;
+		obj_cutie.pos.y += cutieVerticalVelocity;
+	}
+
+	// If cutie has fallen to the bottom
+	if (obj_cutie.pos.y > DISPLAY_HEIGHT)
+	{
+		//game over shenanigans
+	}
+}
+
+void ApplyGravity()
+{
 	//Gravity
 	if (isJumping)
 	{
-		//Apply gravity to jump velocity
-		jumpVelocity += gravity;
+		//Apply gravity to cutie vertical velocity
+		cutieVerticalVelocity += gravity;
 
-		//Update cutie vertical position based on jump velocity
-		obj_cutie.pos.y += jumpVelocity;
+		//Update cutie vertical position based on gravity
+		GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+		obj_cutie.pos.y += cutieVerticalVelocity;
 
-		//if cutie has landed
-		if (obj_cutie.pos.y >= DISPLAY_HEIGHT - CUTIE_HEIGHT)
+		// Check if Cutie has landed on a floor
+		std::vector<int> FloorIDs = Play::CollectGameObjectIDsByType(TYPE_FLOOR);
+		for (int i : FloorIDs)
 		{
-			obj_cutie.pos.y = DISPLAY_HEIGHT - CUTIE_HEIGHT;
-			isJumping = false;
-			CutieState::IDLE; // sets state to idle when landing
+			GameObject& obj_floor = Play::GetGameObject(i);
+
+			float floorLeft = obj_floor.pos.x - (FLOOR_WIDTH / 2);
+			float floorRight = obj_floor.pos.x + (FLOOR_WIDTH / 2);
+			float floorTop = obj_floor.pos.y - (FLOOR_HEIGHT / 2);
+			float floorBottom = obj_floor.pos.y + (FLOOR_HEIGHT / 2);
+
+
+			//if cutie has landed
+			if (CheckAABBCollision(obj_cutie, floorLeft, floorRight, floorTop, floorBottom))
+			{
+				// Cutie has landed on a floor
+				obj_cutie.pos.y = obj_floor.pos.y - (CUTIE_HEIGHT / 2);
+				isJumping = false;
+				cutieState = CutieState::IDLE;
+				cutieVerticalVelocity = 0.0f; // Reset vertical velocity
+				break; // Exit the loop since Cutie has landed on a floor
+			}
 		}
 	}
+}
 
-	//Checking for floor Collisions
-	bool onFloor = false;
-	std::vector<int>FloorIDs = Play::CollectGameObjectIDsByType(TYPE_FLOOR);
-	for (int i :FloorIDs)
-	{
-		GameObject& obj_floor = Play::GetGameObject(i);
-		if (IsColliding(obj_cutie, obj_floor))
-		{
-			onFloor = true;
-			break; //Cutie is on floor, do not check other floors
-		}
-	}
+bool CheckAABBCollision(const GameObject& obj1, float left1, float right1, float top1, float bottom1)
+{
+	//AABB for cutie
+	float cutieLeft = obj1.pos.x - (CUTIE_WIDTH / 2);
+	float cutieRight = obj1.pos.x + (CUTIE_WIDTH / 2);
+	float cutieTop = obj1.pos.y - (CUTIE_HEIGHT / 2);
+	float cutieBottom = obj1.pos.y + (CUTIE_HEIGHT / 2);
 
-	//Applying gravity when not on a floor and reseting jump state when on a floor
-	if (!onFloor)
-	{
-		obj_cutie.pos.y += gravity;
-	}
-	else
-	{
-		isJumping = false;
-		cutieState = CutieState::IDLE;
-	}
+	//Check collision
+
+	return(cutieRight >= left1 && cutieLeft <= right1 && cutieBottom >= top1 && cutieTop <= bottom1);
+}
+
+void DrawAABB(const GameObject& obj, float width, float height)
+{
+	float objLeft = obj.pos.x - (width / 2);
+	float objRight = obj.pos.x + (width / 2);
+	float objTop = obj.pos.y - (height / 2);
+	float objBottom = obj.pos.y + (height / 2);
+
+	Play::DrawRect(Point2D(objLeft, objTop), Point2D(objRight, objBottom), Play::cGreen);
+}
+
+void GameOverDraw()
+{
+	// Draw background for the start screen
+	Play::DrawBackground();
+
+	//Draw Cutie
+	GameObject& cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+	Play::DrawObject(cutie);
+
+	//Game over text
+	Play::DrawFontText("64px", "Game Over", Point2D(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2), Play::CENTRE);
+
+	// Display "Press R to Restart" message
+	Play::DrawFontText("32px", "Press R to Restart", Point2D(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2 + 50), Play::CENTRE);
+
+	Play::PresentDrawingBuffer;
 }
