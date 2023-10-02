@@ -17,8 +17,6 @@ enum GameObjectType
 {
 	TYPE_CUTIE = 0,
 	TYPE_FLOOR = 1,
-	TYPE_ALIEN= 2,
-	TYPE_GHOST= 3,
 };
 
 enum CutieState
@@ -38,7 +36,7 @@ float cutieVerticalVelocity = 3.0f;
 bool isJumping = false;
 float jumpVelocity = 1.0f;
 const float jumpStrength = 15.0f; //Jump height
-const float gravity = 1.0f;  //Gravity strength
+const float gravity = 0.0f;  //Gravity strength
 
 //Width and height for floors
 const float FLOOR_WIDTH = 50.0f;
@@ -63,13 +61,11 @@ void CutieControls();
 void ApplyGravity();
 bool CheckAABBCollision(const GameObject& obj1, float left1, float right1, float top1, float bottom1);
 void DrawAABB(const GameObject& obj, float width, float height);
-void GameOverDraw();
 
 //Flags to control game state and global variables
 GameState gameState = STATE_START;
 bool enterPressed = false;
 CutieState cutieState = IDLE; //starts on an idle state
-Point2D prevCutiePosition; // variable that stores the previous frame position of cutie
 
 //Entry
 void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
@@ -86,12 +82,9 @@ void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
 
 	//Creating the game floors
 	FloorCreation();
-
-	//Start game initialization
-	gameState = STATE_START;
 }
 
-// Update (60 times a second!)
+//Update (60 times a second!)
 bool MainGameUpdate( float elapsedTime )
 {
 	//Main Menu Screen
@@ -118,13 +111,12 @@ bool MainGameUpdate( float elapsedTime )
 	if (gameState == STATE_OVER)
 	{
 		// Add cool game ending stuff
-		GameOverDraw();
 	}
 
 	return Play::KeyDown( VK_ESCAPE );
 }
 
-// Gets called once when the player quits the game 
+//Gets called once when the player quits the game 
 int MainGameExit( void )
 {
 	Play::DestroyManager();
@@ -134,7 +126,6 @@ int MainGameExit( void )
 
 
 //All my functions
-
 void StartGameLogic()
 {
 	//Check if enter key has been pressed to start the game
@@ -228,20 +219,6 @@ void FloorBehaviour()
 		float floorTop = obj_floor.pos.y - (FLOOR_HEIGHT / 2);
 		float floorBottom = obj_floor.pos.y + (FLOOR_HEIGHT / 2);
 
-		//Checking if cutie collides with a floor
-		if (CheckAABBCollision(obj_cutie, floorLeft, floorRight, floorTop, floorBottom))
-		{
-			//Collision with cutie logic here
-			if (prevCutiePosition.y <= floorTop)
-			{
-				// Cutie was above the AABB ihn previous frame, so it landed on top
-				jumpVelocity = 1.0f;
-				obj_cutie.pos.y = obj_floor.pos.y - (CUTIE_HEIGHT / 2);
-				isJumping = false;
-				cutieState = CutieState::IDLE;
-			}	
-		}
-
 		//checking if floors are out of the display area and reset their position
 		if (obj_floor.pos.y > DISPLAY_HEIGHT + (FLOOR_HEIGHT / 2))
 		{
@@ -254,9 +231,6 @@ void FloorBehaviour()
 void UpdateCutie()
 {
 	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
-
-	//Storage of previous cutie frame position
-	prevCutiePosition = obj_cutie.pos;
 
 	switch (cutieState)
 	{
@@ -392,22 +366,4 @@ void DrawAABB(const GameObject& obj, float width, float height)
 	float objBottom = obj.pos.y + (height / 2);
 
 	Play::DrawRect(Point2D(objLeft, objTop), Point2D(objRight, objBottom), Play::cGreen);
-}
-
-void GameOverDraw()
-{
-	// Draw background for the start screen
-	Play::DrawBackground();
-
-	//Draw Cutie
-	GameObject& cutie = Play::GetGameObjectByType(TYPE_CUTIE);
-	Play::DrawObject(cutie);
-
-	//Game over text
-	Play::DrawFontText("64px", "Game Over", Point2D(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2), Play::CENTRE);
-
-	// Display "Press R to Restart" message
-	Play::DrawFontText("32px", "Press R to Restart", Point2D(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2 + 50), Play::CENTRE);
-
-	Play::PresentDrawingBuffer;
 }
