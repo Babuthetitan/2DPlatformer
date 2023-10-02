@@ -31,12 +31,13 @@ const float CUTIE_WIDTH = 12.0f;
 const float CUTIE_HEIGHT = 12.0f;
 const float CUTIE_SPEED = 3.0f;
 float cutieVerticalVelocity = 3.0f;
+const float FALL_THRESHOLD = DISPLAY_HEIGHT + CUTIE_HEIGHT;
 
 //Jumping variables for cutie
 bool isJumping = false;
 float jumpVelocity = 1.0f;
-const float jumpStrength = 15.0f; //Jump height
-const float gravity = 0.0f;  //Gravity strength
+const float jumpStrength = 10.0f; //Jump height
+const float gravity = 1.0f;  //Gravity strength
 
 //Width and height for floors
 const float FLOOR_WIDTH = 50.0f;
@@ -76,7 +77,7 @@ void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
 	//Play::StartAudioLoop("music");
 
 	//Cutie Object Creation
-	Play::CreateGameObject(TYPE_CUTIE, { 85, 75 }, 8, "cutie_idle_3");
+	Play::CreateGameObject(TYPE_CUTIE, { 55, 150 }, 8, "cutie_idle_3");
 	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
 	obj_cutie.animSpeed=0.1;
 
@@ -292,19 +293,6 @@ void CutieControls()
 		isJumping = true;
 		cutieState = CutieState::JUMPING;
 	}
-
-	// If cutie is not jumping and not on a floor
-	if (!isJumping)
-	{
-		cutieVerticalVelocity += gravity;
-		obj_cutie.pos.y += cutieVerticalVelocity;
-	}
-
-	// If cutie has fallen to the bottom
-	if (obj_cutie.pos.y > DISPLAY_HEIGHT)
-	{
-		//game over shenanigans
-	}
 }
 
 void ApplyGravity()
@@ -335,7 +323,7 @@ void ApplyGravity()
 			if (CheckAABBCollision(obj_cutie, floorLeft, floorRight, floorTop, floorBottom))
 			{
 				// Cutie has landed on a floor
-				obj_cutie.pos.y = obj_floor.pos.y - (CUTIE_HEIGHT / 2);
+				obj_cutie.pos.y = obj_floor.pos.y - CUTIE_HEIGHT;
 				isJumping = false;
 				cutieState = CutieState::IDLE;
 				cutieVerticalVelocity = 0.0f; // Reset vertical velocity
