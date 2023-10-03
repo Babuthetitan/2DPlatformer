@@ -36,7 +36,7 @@ const float FALL_THRESHOLD = DISPLAY_HEIGHT + CUTIE_HEIGHT;
 //Jumping variables for cutie
 bool isJumping = false;
 float jumpVelocity = 1.0f;
-const float jumpStrength = 10.0f; //Jump height
+const float jumpStrength = 20.0f; //Jump height
 const float gravity = 1.0f;  //Gravity strength
 
 //Width and height for floors
@@ -61,6 +61,7 @@ void UpdateCutie();
 void CutieControls();
 void ApplyGravity();
 bool CheckAABBCollision(const GameObject& obj1, float left1, float right1, float top1, float bottom1);
+void SetInitialCutiePosition();
 void DrawAABB(const GameObject& obj, float width, float height);
 
 //Flags to control game state and global variables
@@ -74,7 +75,7 @@ void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
 	Play::CreateManager( DISPLAY_WIDTH, DISPLAY_HEIGHT, DISPLAY_SCALE );
 	Play::CentreAllSpriteOrigins(); //obj.pos = center of a sprite
 	Play::LoadBackground("Data\\Backgrounds\\newlife.jpg");
-	//Play::StartAudioLoop("music");
+	Play::StartAudioLoop("music");
 
 	//Cutie Object Creation
 	Play::CreateGameObject(TYPE_CUTIE, { 55, 150 }, 8, "cutie_idle_3");
@@ -83,6 +84,9 @@ void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
 
 	//Creating the game floors
 	FloorCreation();
+
+	//Setting the initial position of "cutie" on a floor
+	SetInitialCutiePosition();
 }
 
 //Update (60 times a second!)
@@ -142,7 +146,6 @@ void StartGameLogic()
 	{
 		Play::PlayAudio("DITP voice over");
 	}
-
 }
 
 void MainMenuDraw()
@@ -331,6 +334,43 @@ void ApplyGravity()
 			}
 		}
 	}
+
+	if (!isJumping)
+	{
+		GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+		obj_cutie.pos.y += 8 * gravity; // Apply gravity
+
+		// Check collision with floors
+		std::vector<int> FloorIDs = Play::CollectGameObjectIDsByType(TYPE_FLOOR);
+		for (int i : FloorIDs)
+		{
+			GameObject& obj_floor = Play::GetGameObject(i);
+
+			float floorLeft = obj_floor.pos.x - (FLOOR_WIDTH / 2);
+			float floorRight = obj_floor.pos.x + (FLOOR_WIDTH / 2);
+			float floorTop = obj_floor.pos.y - (FLOOR_HEIGHT / 2);
+			float floorBottom = obj_floor.pos.y + (FLOOR_HEIGHT / 2);
+
+			// Check if the character is colliding with a floor
+			if (CheckAABBCollision(obj_cutie, floorLeft, floorRight, floorTop, floorBottom))
+			{
+				// The character is on a floor; stop falling
+				obj_cutie.pos.y = obj_floor.pos.y - CUTIE_HEIGHT;
+				isJumping = false;
+				cutieState = CutieState::IDLE;
+				cutieVerticalVelocity = 0.0f; // Reset vertical velocity
+				break; // Exit the loop since Cutie has landed on a floor
+			}
+		}
+	}
+
+	// Check if "cutie" falls below the display area
+	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+	if (obj_cutie.pos.y > FALL_THRESHOLD)
+	{
+		// Reset the game to the start screen
+		gameState = STATE_START;
+	}
 }
 
 bool CheckAABBCollision(const GameObject& obj1, float left1, float right1, float top1, float bottom1)
@@ -344,6 +384,26 @@ bool CheckAABBCollision(const GameObject& obj1, float left1, float right1, float
 	//Check collision
 
 	return(cutieRight >= left1 && cutieLeft <= right1 && cutieBottom >= top1 && cutieTop <= bottom1);
+}
+
+void SetInitialCutiePosition()
+{
+	std::vector<int> FLoorIDs = Play::CollectGameObjectIDsByType(TYPE_FLOOR);
+
+		if (!FLoorIDs.empty())
+		{
+			//Selects a random floor object
+			int randomIndex = rand() % FLoorIDs.size();
+			GameObject& randomFloor = Play::GetGameObject(FLoorIDs[randomIndex]);
+
+			//Cutie will be positioned just above the selected floor
+			GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+			obj_cutie.pos.x = randomFloor.pos.x;
+			obj_cutie.pos.y = randomFloor.pos.y - CUTIE_HEIGHT;
+
+			//Jump state reset
+			isJumping = false;
+		}
 }
 
 void DrawAABB(const GameObject& obj, float width, float height)
