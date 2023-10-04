@@ -36,7 +36,7 @@ const float FALL_THRESHOLD = DISPLAY_HEIGHT + CUTIE_HEIGHT;
 //Jumping variables for cutie
 bool isJumping = false;
 float jumpVelocity = 1.0f;
-const float jumpStrength = 20.0f; //Jump height
+const float jumpStrength = 15.0f; //Jump height
 const float gravity = 1.0f;  //Gravity strength
 
 //Width and height for floors
@@ -50,6 +50,8 @@ const float FLOOR_RADIUS = 12.0f;
 //Floor speed
 const float FLOOR_SPEED = 0.0f;
 
+//Score count tracker variable
+int score = 0;
 
 //Function declarartion
 void StartGameLogic();
@@ -62,6 +64,8 @@ void CutieControls();
 void ApplyGravity();
 bool CheckAABBCollision(const GameObject& obj1, float left1, float right1, float top1, float bottom1);
 void SetInitialCutiePosition();
+void RestartAfterDeath();
+void CameraFollow();
 void DrawAABB(const GameObject& obj, float width, float height);
 
 //Flags to control game state and global variables
@@ -105,11 +109,13 @@ bool MainGameUpdate( float elapsedTime )
 	//Gameplay begins over here
     if (gameState == STATE_PLAY)
 	{
-		CutieControls();
+    	CutieControls();
 		UpdateCutie();
 		ApplyGravity();
 		UpdateDraw();
 		FloorBehaviour();
+		RestartAfterDeath();	
+		CameraFollow();
 	}
 	
 	//Gameplay ends over here
@@ -158,12 +164,16 @@ void MainMenuDraw()
 	//Draw Cutie
 	GameObject& cutie = Play::GetGameObjectByType(TYPE_CUTIE);
 	Play::DrawObject(cutie);
-
+	
 	// Display a welcome message
+	Play::SetDrawingSpace(Play::SCREEN);
 	Play::DrawFontText("32px", "Welcome to Cute Jumper", Point2D(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2 - 50), Play::CENTRE);
+	Play::SetDrawingSpace(Play::WORLD);
 
 	// Prompt to press Enter
+	Play::SetDrawingSpace(Play::SCREEN);
 	Play::DrawFontText("64px", "Press Enter to Start", Point2D(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2 + 50), Play::CENTRE);
+	Play::SetDrawingSpace(Play::WORLD);
 
 	Play::PresentDrawingBuffer();
 }
@@ -184,12 +194,20 @@ void UpdateDraw()
 	}
 
 	//Draw Cutie and its AABB
-	GameObject& cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+	GameObject& cutie = Play::GetGameObjectByType(TYPE_CUTIE); 
 	Play::DrawObject(cutie);
-	DrawAABB(cutie, CUTIE_WIDTH, CUTIE_HEIGHT); //Draws an AABB around cutie
+	//DrawAABB(cutie, CUTIE_WIDTH, CUTIE_HEIGHT); //Draws an AABB around cutie
 
 	//Game controls text
+	Play::SetDrawingSpace(Play::SCREEN);
 	Play::DrawFontText("64px", "Use arrow keys to control Cutie & space bar to jump", Point2D(DISPLAY_WIDTH / 2,570), Play::CENTRE);
+	Play::SetDrawingSpace(Play::WORLD);
+
+	//score count
+	Play::SetDrawingSpace(Play::SCREEN);
+	Play::DrawFontText("64px", "Score: " + std::to_string(score), Point2D(DISPLAY_WIDTH - 100,20), Play::RIGHT);
+	Play::SetDrawingSpace(Play::WORLD);
+	
 
 	Play::PresentDrawingBuffer();
 }
@@ -330,6 +348,10 @@ void ApplyGravity()
 				isJumping = false;
 				cutieState = CutieState::IDLE;
 				cutieVerticalVelocity = 0.0f; // Reset vertical velocity
+
+				//Score count increase when cutie lands on floor
+				score++;
+
 				break; // Exit the loop since Cutie has landed on a floor
 			}
 		}
@@ -363,14 +385,6 @@ void ApplyGravity()
 			}
 		}
 	}
-
-	// Check if "cutie" falls below the display area
-	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
-	if (obj_cutie.pos.y > FALL_THRESHOLD)
-	{
-		// Reset the game to the start screen
-		gameState = STATE_START;
-	}
 }
 
 bool CheckAABBCollision(const GameObject& obj1, float left1, float right1, float top1, float bottom1)
@@ -390,20 +404,58 @@ void SetInitialCutiePosition()
 {
 	std::vector<int> FLoorIDs = Play::CollectGameObjectIDsByType(TYPE_FLOOR);
 
-		if (!FLoorIDs.empty())
-		{
-			//Selects a random floor object
-			int randomIndex = rand() % FLoorIDs.size();
-			GameObject& randomFloor = Play::GetGameObject(FLoorIDs[randomIndex]);
+	if (!FLoorIDs.empty())
+	{
+		//Selects a random floor object
+		int randomIndex = rand() % FLoorIDs.size();
+		GameObject& randomFloor = Play::GetGameObject(FLoorIDs[randomIndex]);
 
-			//Cutie will be positioned just above the selected floor
-			GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
-			obj_cutie.pos.x = randomFloor.pos.x;
-			obj_cutie.pos.y = randomFloor.pos.y - CUTIE_HEIGHT;
+		//Cutie will be positioned just above the selected floor
+		GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+		obj_cutie.pos.x = randomFloor.pos.x;
+		obj_cutie.pos.y = randomFloor.pos.y - CUTIE_HEIGHT;
 
-			//Jump state reset
-			isJumping = false;
-		}
+		//Jump state reset
+		isJumping = false;
+	}
+}
+
+void RestartAfterDeath()
+{
+	// Check if "cutie" falls below the display area
+	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+	if (obj_cutie.pos.y > FALL_THRESHOLD)
+	{
+		// Reset the game to the start screen
+		gameState = STATE_START;
+
+		// Reset the high score to 0
+		score = 0;
+
+		Play::StopAudioLoop("music");
+		SetInitialCutiePosition();
+		Play::StartAudioLoop("music");
+	}
+}
+
+void CameraFollow()
+{
+	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+
+	//Initial camera position set up
+	static Point2D initialCameraPosition= { 0, 0 };
+	if (initialCameraPosition.y == 0)
+	{
+		initialCameraPosition.y = obj_cutie.pos.y - 500; //initial camera pos can be adjusted here
+	}
+
+	Play::SetCameraPosition(initialCameraPosition);
+
+	//Camera adjusting as cutie moves up
+	if (obj_cutie.pos.y <= 500)
+	{
+		Play::SetCameraPosition({ 0, obj_cutie.pos.y - 500 });
+	}	
 }
 
 void DrawAABB(const GameObject& obj, float width, float height)
