@@ -90,7 +90,7 @@ void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
 	FloorCreation();
 
 	//Setting the initial position of "cutie" on a floor
-	SetInitialCutiePosition();
+	SetInitialCutiePosition();	
 }
 
 //Update (60 times a second!)
@@ -229,12 +229,12 @@ void FloorBehaviour()
 {
 	//Floor behaviour going into update
 	std::vector<int> FloorIDs = Play::CollectGameObjectIDsByType(TYPE_FLOOR);
-	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
 
 	for (int i : FloorIDs)
 	{
 		GameObject& obj_floor = Play::GetGameObject(i);
-		obj_floor.pos.y += FLOOR_SPEED;
+		obj_floor.pos.y += FLOOR_SPEED; //moves the floors downward
+		
 
 		float floorLeft = obj_floor.pos.x - (FLOOR_WIDTH / 2);
 		float floorRight = obj_floor.pos.x + (FLOOR_WIDTH / 2);
