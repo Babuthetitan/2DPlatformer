@@ -17,6 +17,7 @@ enum GameObjectType
 {
 	TYPE_CUTIE = 0,
 	TYPE_FLOOR = 1,
+	TYPE_GHOST = 2,
 };
 
 enum CutieState
@@ -24,6 +25,11 @@ enum CutieState
 	IDLE,
 	WALKING,
 	JUMPING,
+};
+
+enum GhostState
+{
+	IDLE1,
 };
 
 //Width, height, vertcial velocity and speed for cutie
@@ -36,7 +42,7 @@ const float FALL_THRESHOLD = DISPLAY_HEIGHT + CUTIE_HEIGHT;
 //Jumping variables for cutie
 bool isJumping = false;
 float jumpVelocity = 1.0f;
-const float jumpStrength = 15.0f; //Jump height
+const float jumpStrength = 17.0f; //Jump height
 const float gravity = 1.0f;  //Gravity strength
 
 //Width and height for floors
@@ -44,11 +50,15 @@ const float FLOOR_WIDTH = 50.0f;
 const float FLOOR_HEIGHT = 9.0f;
 
 //Number of floors to create
-const int NUM_FLOORS = 10;
+const int NUM_FLOORS = 30;
 //Floor radius
 const float FLOOR_RADIUS = 12.0f;
 //Floor speed
-const float FLOOR_SPEED = 0.0f;
+const float FLOOR_SPEED = 0.5f;
+//Increasing the floor speed constants
+const float FLOOR_SPEED_THRESHOLD = 30.0f; //Score threshold
+const float INCREASED_FLOOR_SPEED = 1.0f; //New floor speed
+float currentFloorSpeed = FLOOR_SPEED; //Initial floor speed
 
 //Score count tracker variable
 int score = 0;
@@ -65,13 +75,14 @@ void ApplyGravity();
 bool CheckAABBCollision(const GameObject& obj1, float left1, float right1, float top1, float bottom1);
 void SetInitialCutiePosition();
 void RestartAfterDeath();
-void CameraFollow();
+void UpdateGhost();
 void DrawAABB(const GameObject& obj, float width, float height);
 
 //Flags to control game state and global variables
 GameState gameState = STATE_START;
 bool enterPressed = false;
-CutieState cutieState = IDLE; //starts on an idle state
+CutieState cutieState = IDLE; //cutie starts on an idle state
+GhostState ghostState = IDLE1; //ghost starts on an idle state
 
 //Entry
 void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
@@ -85,6 +96,12 @@ void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
 	Play::CreateGameObject(TYPE_CUTIE, { 55, 150 }, 8, "cutie_idle_3");
 	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
 	obj_cutie.animSpeed=0.1;
+
+	//ghost enemy object creation
+	Play::CreateGameObject(TYPE_GHOST, { 55, 140 }, 8, "ghost_enemy_4");
+	GameObject& obj_ghost = Play::GetGameObjectByType(TYPE_GHOST);
+	obj_ghost.animSpeed = 0.1;
+
 
 	//Creating the game floors
 	FloorCreation();
@@ -111,11 +128,11 @@ bool MainGameUpdate( float elapsedTime )
 	{
     	CutieControls();
 		UpdateCutie();
+		UpdateGhost();
 		ApplyGravity();
 		UpdateDraw();
 		FloorBehaviour();
 		RestartAfterDeath();	
-		CameraFollow();
 	}
 	
 	//Gameplay ends over here
@@ -196,7 +213,11 @@ void UpdateDraw()
 	//Draw Cutie and its AABB
 	GameObject& cutie = Play::GetGameObjectByType(TYPE_CUTIE); 
 	Play::DrawObject(cutie);
-	//DrawAABB(cutie, CUTIE_WIDTH, CUTIE_HEIGHT); //Draws an AABB around cutie
+	DrawAABB(cutie, CUTIE_WIDTH, CUTIE_HEIGHT); //Draws an AABB around cutie
+
+	//Draw Ghost
+	GameObject& ghost = Play::GetGameObjectByType(TYPE_GHOST);
+	Play::DrawObject(ghost);
 
 	//Game controls text
 	Play::SetDrawingSpace(Play::SCREEN);
@@ -216,11 +237,16 @@ void FloorCreation()
 {
 	//Creating the floors going into entry
 	{
+		//Creating the floors from the top
+		float yPos = 0.0f;
+
 		for (int i = 0; i < NUM_FLOORS; i++)
 		{
 			float xPos = static_cast<float>(rand() % DISPLAY_WIDTH);
-			float yPos = static_cast<float>(rand() % DISPLAY_HEIGHT);
 			Play::CreateGameObject(TYPE_FLOOR, { xPos, yPos }, FLOOR_WIDTH + FLOOR_HEIGHT, "floor");
+
+			// Increase the yPos for the next floor
+			yPos += FLOOR_HEIGHT + 12.0f; //Adjusting the vertical gap between floors here
 		}
 	}
 }
@@ -235,17 +261,33 @@ void FloorBehaviour()
 		GameObject& obj_floor = Play::GetGameObject(i);
 		obj_floor.pos.y += FLOOR_SPEED; //moves the floors downward
 		
+		obj_floor.pos.y += currentFloorSpeed; // Update the position of the floors using currentFloorSpeed
+
+		
 
 		float floorLeft = obj_floor.pos.x - (FLOOR_WIDTH / 2);
 		float floorRight = obj_floor.pos.x + (FLOOR_WIDTH / 2);
 		float floorTop = obj_floor.pos.y - (FLOOR_HEIGHT / 2);
 		float floorBottom = obj_floor.pos.y + (FLOOR_HEIGHT / 2);
 
-		//checking if floors are out of the display area and reset their position
+		//Checking if the floors have gone below the display area
 		if (obj_floor.pos.y > DISPLAY_HEIGHT + (FLOOR_HEIGHT / 2))
 		{
+			//Wrapping the floors back to the top of the screen
 			obj_floor.pos.y = -FLOOR_RADIUS;
+
+			//Randomly repositions the floors horizontally
 			obj_floor.pos.x = static_cast<float>(rand() % DISPLAY_WIDTH);
+		}
+
+		// Check the current score and adjust the floor speed if needed
+		if (score >= FLOOR_SPEED_THRESHOLD)
+		{
+			currentFloorSpeed = INCREASED_FLOOR_SPEED;
+		}
+		else
+		{
+		    currentFloorSpeed = FLOOR_SPEED;
 		}
 	}
 }
@@ -281,8 +323,21 @@ void UpdateCutie()
 		break;
 	}
 
+	Play::UpdateGameObject(obj_cutie);
+}
 
-	Play::UpdateGameObject(obj_cutie) ;
+void UpdateGhost()
+{
+	GameObject& obj_ghost = Play::GetGameObjectByType(TYPE_GHOST);
+
+	switch (ghostState)
+	{
+	case GhostState::IDLE1:
+		obj_ghost.spriteId = Play::GetSpriteId("ghost_enemy_4");
+		break;
+	}
+	
+	Play::UpdateGameObject(obj_ghost);
 }
 
 void CutieControls()
@@ -307,7 +362,7 @@ void CutieControls()
 	}
 
 	//Handling the jumping mechanics
-	if (Play::KeyDown(VK_SPACE) && !isJumping)
+	if (Play::KeyPressed(VK_SPACE) && !isJumping)
 	{
 		// Upward velocity to initiate jump
 		cutieVerticalVelocity = -jumpStrength;
@@ -340,17 +395,16 @@ void ApplyGravity()
 			float floorBottom = obj_floor.pos.y + (FLOOR_HEIGHT / 2);
 
 
-			//if cutie has landed
+			//if cutie has landed on top of a floor
 			if (CheckAABBCollision(obj_cutie, floorLeft, floorRight, floorTop, floorBottom))
 			{
 				// Cutie has landed on a floor
 				obj_cutie.pos.y = obj_floor.pos.y - CUTIE_HEIGHT;
-				isJumping = false;
-				cutieState = CutieState::IDLE;
-				cutieVerticalVelocity = 0.0f; // Reset vertical velocity
-
 				//Score count increase when cutie lands on floor
 				score++;
+				isJumping = false;
+				cutieState = CutieState::IDLE;
+				cutieVerticalVelocity = 0.0f; // Reset vertical velocity	
 
 				break; // Exit the loop since Cutie has landed on a floor
 			}
@@ -436,26 +490,6 @@ void RestartAfterDeath()
 		SetInitialCutiePosition();
 		Play::StartAudioLoop("music");
 	}
-}
-
-void CameraFollow()
-{
-	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
-
-	//Initial camera position set up
-	static Point2D initialCameraPosition= { 0, 0 };
-	if (initialCameraPosition.y == 0)
-	{
-		initialCameraPosition.y = obj_cutie.pos.y - 500; //initial camera pos can be adjusted here
-	}
-
-	Play::SetCameraPosition(initialCameraPosition);
-
-	//Camera adjusting as cutie moves up
-	if (obj_cutie.pos.y <= 500)
-	{
-		Play::SetCameraPosition({ 0, obj_cutie.pos.y - 500 });
-	}	
 }
 
 void DrawAABB(const GameObject& obj, float width, float height)
