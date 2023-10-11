@@ -56,12 +56,16 @@ const float FLOOR_RADIUS = 12.0f;
 //Floor speed
 const float FLOOR_SPEED = 0.5f;
 //Increasing the floor speed constants
-const float FLOOR_SPEED_THRESHOLD = 30.0f; //Score threshold
+const float FLOOR_SPEED_THRESHOLD = 40.0f; //Score threshold
 const float INCREASED_FLOOR_SPEED = 1.0f; //New floor speed
 float currentFloorSpeed = FLOOR_SPEED; //Initial floor speed
 
 //Score count tracker variable
 int score = 0;
+
+//Ghost variables
+float ghostSpeed = 1.0f; //Adjustable ghostspeed
+const int GHOST_FOLLOW_THRESHOLD = 30;
 
 //Function declarartion
 void StartGameLogic();
@@ -76,7 +80,11 @@ bool CheckAABBCollision(const GameObject& obj1, float left1, float right1, float
 void SetInitialCutiePosition();
 void RestartAfterDeath();
 void UpdateGhost();
+void GhostFollow(GameObject& ghost, const GameObject& cutie, float speed);
+void CheckGhostCollisionWithPlayer();
+void SetInitialGhostPosition();
 void DrawAABB(const GameObject& obj, float width, float height);
+void GameOverScreen();
 
 //Flags to control game state and global variables
 GameState gameState = STATE_START;
@@ -98,7 +106,7 @@ void MainGameEntry( PLAY_IGNORE_COMMAND_LINE )
 	obj_cutie.animSpeed=0.1;
 
 	//ghost enemy object creation
-	Play::CreateGameObject(TYPE_GHOST, { 55, 140 }, 8, "ghost_enemy_4");
+	Play::CreateGameObject(TYPE_GHOST, { -100, -100 }, 8, "ghost_enemy_4");
 	GameObject& obj_ghost = Play::GetGameObjectByType(TYPE_GHOST);
 	obj_ghost.animSpeed = 0.1;
 
@@ -126,8 +134,19 @@ bool MainGameUpdate( float elapsedTime )
 	//Gameplay begins over here
     if (gameState == STATE_PLAY)
 	{
+		GameObject& obj_ghost = Play::GetGameObjectByType(TYPE_GHOST);
+		GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+
     	CutieControls();
 		UpdateCutie();
+
+		//GHOST BEHAVIOR
+		if (score >= GHOST_FOLLOW_THRESHOLD)
+		{
+			GhostFollow(obj_ghost, obj_cutie, 1.5f);
+			CheckGhostCollisionWithPlayer();
+		}
+		
 		UpdateGhost();
 		ApplyGravity();
 		UpdateDraw();
@@ -138,7 +157,18 @@ bool MainGameUpdate( float elapsedTime )
 	//Gameplay ends over here
 	if (gameState == STATE_OVER)
 	{
-		// Add cool game ending stuff
+		UpdateDraw();
+		
+		//Checks if enter key is pressed to restart
+		if (Play::KeyDown(VK_RETURN))
+		{
+			//Reset game state and other variables
+			gameState = STATE_START;
+			score = 0;
+			SetInitialCutiePosition();
+			SetInitialGhostPosition();
+			Play::StartAudioLoop("music");
+		}
 	}
 
 	return Play::KeyDown( VK_ESCAPE );
@@ -167,7 +197,7 @@ void StartGameLogic()
 	//More cool stuff to add when enter is presed
 	if (enterPressed)
 	{
-		Play::PlayAudio("DITP voice over");
+		//Play::PlayAudio("DITP"); //Plays a scary DITP tone when the game starts, (Diversity Internship Training Programme)
 	}
 }
 
@@ -229,7 +259,12 @@ void UpdateDraw()
 	Play::DrawFontText("64px", "Score: " + std::to_string(score), Point2D(DISPLAY_WIDTH - 100,20), Play::RIGHT);
 	Play::SetDrawingSpace(Play::WORLD);
 	
-
+	//GameOverScreen
+	if (gameState == STATE_OVER)
+	{
+		GameOverScreen();
+	}
+	
 	Play::PresentDrawingBuffer();
 }
 
@@ -364,6 +399,7 @@ void CutieControls()
 	//Handling the jumping mechanics
 	if (Play::KeyPressed(VK_SPACE) && !isJumping)
 	{
+		Play::PlayAudio("jump"); //Jump sound effect
 		// Upward velocity to initiate jump
 		cutieVerticalVelocity = -jumpStrength;
 		isJumping = true;
@@ -481,15 +517,58 @@ void RestartAfterDeath()
 	if (obj_cutie.pos.y > FALL_THRESHOLD)
 	{
 		// Reset the game to the start screen
-		gameState = STATE_START;
+		gameState = STATE_OVER;
 
-		// Reset the high score to 0
-		score = 0;
-
+		//Game music
 		Play::StopAudioLoop("music");
-		SetInitialCutiePosition();
-		Play::StartAudioLoop("music");
+		
+		//Game over sound effect
+		Play::PlayAudio("death");
 	}
+}
+
+void GhostFollow(GameObject& ghost, const GameObject& cutie, float speed)
+{
+	GameObject& obj_ghost = Play::GetGameObjectByType(TYPE_GHOST);
+	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+
+	float dx = cutie.pos.x - ghost.pos.x;
+	float dy = cutie.pos.y - ghost.pos.y;
+
+	//Normalize the direction
+	float length = sqrt(dx * dx + dy * dy);
+	if (length != 0.0f)
+	{
+		dx /= length;
+		dy /= length;
+	}
+
+	//Ghost position update
+	ghost.pos.x += speed * dx;
+	ghost.pos.y += speed * dy;
+}
+
+void CheckGhostCollisionWithPlayer()
+{
+	GameObject& obj_ghost = Play::GetGameObjectByType(TYPE_GHOST);
+	GameObject& obj_cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+
+	// Check for collision between ghost and player
+	if (CheckAABBCollision(obj_ghost, obj_cutie.pos.x - (CUTIE_WIDTH / 2), obj_cutie.pos.x + (CUTIE_WIDTH / 2), obj_cutie.pos.y - (CUTIE_HEIGHT / 2), obj_cutie.pos.y + (CUTIE_HEIGHT / 2)))
+	{
+		gameState = STATE_OVER; // Transition to the game over state
+		Play::StopAudioLoop("music"); // Stop game music
+		Play::PlayAudio("death"); // Play game over sound effect
+	}
+}
+
+void SetInitialGhostPosition()
+{
+	GameObject& obj_ghost = Play::GetGameObjectByType(TYPE_GHOST);
+
+	//Initial position of the ghost
+	obj_ghost.pos.x = -100;
+	obj_ghost.pos.y = -100;
 }
 
 void DrawAABB(const GameObject& obj, float width, float height)
@@ -500,4 +579,22 @@ void DrawAABB(const GameObject& obj, float width, float height)
 	float objBottom = obj.pos.y + (height / 2);
 
 	Play::DrawRect(Point2D(objLeft, objTop), Point2D(objRight, objBottom), Play::cGreen);
+}
+
+void GameOverScreen()
+{
+	//Displays the game oevr screen
+    Play::DrawBackground;
+
+	//Text to show that the game is over
+	Play::SetDrawingSpace(Play::SCREEN);
+	Play::DrawFontText("32px", "Game Over!! :-)", Point2D(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2 - 50), Play::CENTRE);
+	Play::DrawFontText("64px", "Press Enter to Play Again", Point2D(DISPLAY_WIDTH / 2, DISPLAY_HEIGHT / 2 + 50), Play::CENTRE);
+	Play::SetDrawingSpace(Play::WORLD);
+
+	//Draw Cutie
+	GameObject& cutie = Play::GetGameObjectByType(TYPE_CUTIE);
+	Play::DrawObject(cutie);
+
+	Play::PresentDrawingBuffer;
 }
