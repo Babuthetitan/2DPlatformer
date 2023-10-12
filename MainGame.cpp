@@ -56,12 +56,15 @@ const float FLOOR_RADIUS = 12.0f;
 //Floor speed
 const float FLOOR_SPEED = 0.5f;
 //Increasing the floor speed constants
-const float FLOOR_SPEED_THRESHOLD = 40.0f; //Score threshold
+const float FLOOR_SPEED_THRESHOLD = 70.0f; //Score threshold
 const float INCREASED_FLOOR_SPEED = 1.0f; //New floor speed
 float currentFloorSpeed = FLOOR_SPEED; //Initial floor speed
 
 //Score count tracker variable
 int score = 0;
+
+//Last platform cutie has landed on
+GameObject* lastLandedPlatform = nullptr;
 
 //Ghost variables
 float ghostSpeed = 1.0f; //Adjustable ghostspeed
@@ -143,7 +146,7 @@ bool MainGameUpdate( float elapsedTime )
 		//GHOST BEHAVIOR
 		if (score >= GHOST_FOLLOW_THRESHOLD)
 		{
-			GhostFollow(obj_ghost, obj_cutie, 1.5f);
+			GhostFollow(obj_ghost, obj_cutie, 1.0f);
 			CheckGhostCollisionWithPlayer();
 		}
 		
@@ -434,10 +437,17 @@ void ApplyGravity()
 			//if cutie has landed on top of a floor
 			if (CheckAABBCollision(obj_cutie, floorLeft, floorRight, floorTop, floorBottom))
 			{
+
+				//Checking if cutie has landed on a different platform
+				if (&obj_cutie != lastLandedPlatform)
+				{
+					//Cutie has landed on a new floor, increase the score
+					score++;
+					lastLandedPlatform = &obj_floor;
+				}
+
 				// Cutie has landed on a floor
 				obj_cutie.pos.y = obj_floor.pos.y - CUTIE_HEIGHT;
-				//Score count increase when cutie lands on floor
-				score++;
 				isJumping = false;
 				cutieState = CutieState::IDLE;
 				cutieVerticalVelocity = 0.0f; // Reset vertical velocity	
